@@ -1,8 +1,11 @@
 # fleet-spike — architectural spike for Kubescape fleet posture aggregation
 
 **This is not production code and is not proposed as a PR.** It is a local
-spike that demonstrates the aggregation semantics behind my LFX application,
-using a fake scanner so the logic is testable without any cluster.
+spike that demonstrates the aggregation semantics behind my LFX application.
+
+It runs two ways: against a fake scanner for synthetic edge cases, and against
+**real `kubescape scan --format json` output** captured from three kind
+clusters (`fleet/testdata/`, trimmed to the fields the aggregation reads).
 
 ## Run
 
@@ -26,12 +29,31 @@ go run . > /tmp/fleet-report.json; echo "exit=$?"
 | Byte-identical JSON across 50 runs | `TestSerializedOutputIsDeterministic` |
 | Report written before non-zero exit | `main.go` |
 
+## What the real reports showed
+
+Findings taken from the captured output, and what each one changed:
+
+| Observation | Consequence | Test |
+|---|---|---|
+| `passed` is three-valued: 6 `irrelevant`, 1 `w/exceptions`, 9 plain | a cell must carry `subStatus` and `ResourceCounters`, not a status string | `TestRealReport_PassedIsThreeValued` |
+| all 6 `irrelevant` passes examined **zero** resources | "passed" and "nothing to check" must not read alike | same |
+| `clusterName` is `""` in every report | identity is not recoverable; the orchestrator carries the context through | `TestRealReport_CarriesNoClusterIdentity` |
+| 47 of 48 controls identical across the fleet | drift must be surfaced separately or the one row that matters is buried | `TestRealFleet_SingleDriftIsQualifiedPass` |
+| the single drift, C-0057, is `passed (w/exceptions)` -> `failed` | flattening `status` alone loses that the baseline pass was already qualified | same |
+
+An unreachable context is recorded as `SCAN_ERROR` and the remaining contexts
+still scan (`TestRealFleet_UnreachableContextDoesNotAbortFleet`). That path is
+only reachable because `Kubescape.Scan` now returns an error for an
+unreachable cluster instead of calling `logger.Fatal`
+([kubescape/kubescape#2788](https://github.com/kubescape/kubescape/pull/2788)).
+
 ## Deliberate non-goals
 
 Concurrency. SaaS aggregation. Changing existing single-cluster report
-schemas. Cluster discovery. Real Kubescape types — the production
-implementation would derive `ClusterScanResult` from the finalized posture
-report rather than define its own.
+schemas. Cluster discovery. Importing Kubescape's Go types directly — the
+loader here reads the report JSON, whereas a production implementation would
+derive `ClusterScanResult` from the in-process `PostureReport` returned by
+`ResultsHandler.GetResults()`.
 
 ## Open design questions (for maintainers)
 

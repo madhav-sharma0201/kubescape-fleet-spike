@@ -1,7 +1,13 @@
 // Package fleet is an architectural spike for multi-cluster posture
-// aggregation in Kubescape. It is deliberately decoupled from Kubescape's
-// production types: the orchestrator depends only on the ContextScanner
-// interface, so the aggregation logic is testable without any cluster.
+// aggregation in Kubescape.
+//
+// The orchestrator depends only on the ContextScanner interface, so the
+// aggregation logic is testable without any cluster. Two scanners are
+// provided: a fake one for synthetic edge cases, and ReportScanner, which
+// replays real `kubescape scan --format json` output captured from three kind
+// clusters. The status model and the fields carried on each matrix cell are
+// derived from what those real reports actually contain, not from a guess at
+// the schema.
 //
 // This is not production code. It exists to demonstrate that the failure
 // semantics, status model and determinism guarantees have been thought
@@ -58,11 +64,41 @@ const (
 	DriftIndeterminate DriftKind = "INDETERMINATE"
 )
 
+// ResourceCounters mirrors the per-control resource tallies Kubescape emits in
+// summaryDetails.controls[].ResourceCounters.
+type ResourceCounters struct {
+	Passed   int `json:"passedResources"`
+	Failed   int `json:"failedResources"`
+	Skipped  int `json:"skippedResources"`
+	Excluded int `json:"excludedResources"`
+}
+
+// Evidence reports whether the control actually examined anything. A control
+// can be "passed" having evaluated zero resources, which is not the same claim
+// as passing over 77 of them.
+func (rc ResourceCounters) Evidence() bool {
+	return rc.Passed+rc.Failed+rc.Skipped+rc.Excluded > 0
+}
+
 // ControlOutcome is one control's result within one cluster.
+//
+// SubStatus and Counters are carried deliberately. In real Kubescape output
+// "passed" is three-valued: passed with subStatus "irrelevant" (nothing to
+// check), passed with "w/exceptions" (passing because an exception was
+// applied), and plain passed. A matrix cell holding only a status string
+// reports PASS -> FAIL identically whether the baseline genuinely passed or
+// merely had nothing to evaluate.
 type ControlOutcome struct {
-	ID     string        `json:"controlID"`
-	Name   string        `json:"name,omitempty"`
-	Status ControlStatus `json:"status"`
+	ID        string           `json:"controlID"`
+	Name      string           `json:"name,omitempty"`
+	Status    ControlStatus    `json:"status"`
+	SubStatus string           `json:"subStatus,omitempty"`
+	Counters  ResourceCounters `json:"resourceCounters"`
+}
+
+// Vacuous reports a control that passed without examining any resource.
+func (c ControlOutcome) Vacuous() bool {
+	return c.Status == StatusPass && !c.Counters.Evidence()
 }
 
 // ClusterScanResult is the normalized result of scanning a single context.
