@@ -358,6 +358,22 @@ whether the feature is trustworthy are:
 3. *Live kind fixture* — three contexts plus one deliberately unreachable, for
    the integration suite in week 11.
 
+**Every test verified against the unmodified code.** A test that also passes
+before the fix proves nothing, and it is the specific thing @matthyx has
+blocked PRs over. So on each of my merged PRs I reverted the production change
+and re-ran, keeping only tests that failed for the right reason — for #2898
+that meant `expected: "context-a"` / `actual: "context-b"`, the ambient context
+winning over the selected one. I applied the same check reviewing #2689,
+mutating each of the two fixes separately to confirm the author's tests caught
+them. I would hold fleet tests to the same bar: a drift test that passes
+against a matrix which ignores `subStatus` is not a drift test.
+
+I also run new tests with `KUBECONFIG` unset and an empty `HOME`. That is not
+theoretical — my first revision of #2898 depended on the machine having a
+kubeconfig and went red on CI for that reason rather than for the change
+itself. The fleet suite will touch kubeconfig loading constantly, so anything I
+write there has to be hermetic by construction.
+
 **One thing I would want to get right early:** a test asserting a control is
 `PASS` in both clusters must also assert *why*. Given the `irrelevant` finding
 above, `PASS`/`PASS` over zero resources and `PASS`/`PASS` over 77 resources
