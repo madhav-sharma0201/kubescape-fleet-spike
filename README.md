@@ -5,7 +5,8 @@ spike that demonstrates the aggregation semantics behind my LFX application.
 
 It runs two ways: against a fake scanner for synthetic edge cases, and against
 **real `kubescape scan --format json` output** captured from three kind
-clusters (`fleet/testdata/`, trimmed to the fields the aggregation reads).
+clusters (`fleet/testdata/`, trimmed to the fields the aggregation reads). The
+demo below uses the real reports.
 
 ## Run
 
@@ -13,8 +14,50 @@ clusters (`fleet/testdata/`, trimmed to the fields the aggregation reads).
 go test ./... -count=1
 go test -race ./... -count=5
 go vet ./...
-go run . > /tmp/fleet-report.json; echo "exit=$?"
+go run . -table                                  # matrix + drift
+go run . > /tmp/fleet-report.json; echo "exit=$?"   # deterministic JSON
 ```
+
+## What it produces
+
+Run against the captured reports in `fleet/testdata/` — three real kind
+contexts plus one that does not exist:
+
+```
+$ go run . -table
+baseline: kind-fleet-a
+contexts: kind-fleet-a, kind-fleet-b, kind-fleet-c, kind-fleet-missing
+48 controls, 3 scanned, 1 failed, 1 regressions
+
+ERRORS
+  kind-fleet-missing     context "kind-fleet-missing" is not reachable: no kubeconfig entry
+
+DRIFT (vs baseline)
+  CONTROL  CONTEXT       BASELINE  TARGET  KIND
+  C-0057   kind-fleet-b  PASS      FAIL    REGRESSION
+  kind-fleet-b: 2 indeterminate — no usable evidence on one side (skipped or absent)
+  kind-fleet-c: 2 indeterminate — no usable evidence on one side (skipped or absent)
+  kind-fleet-missing: 48 indeterminate — context did not scan
+
+MATRIX
+  CONTROL  kind-fleet-a   kind-fleet-b   kind-fleet-c   kind-fleet-missing
+  C-0002   FAIL           FAIL           FAIL           SCAN_ERROR
+  C-0005   PASS           PASS           PASS           SCAN_ERROR
+  C-0007   FAIL           FAIL           FAIL           SCAN_ERROR
+  C-0012   FAIL           FAIL           FAIL           SCAN_ERROR
+  C-0013   FAIL           FAIL           FAIL           SCAN_ERROR
+  ...                                     (48 rows)
+$ echo $?
+1
+```
+
+48 controls, and exactly one line worth acting on. Drift is printed before the
+matrix and the two reasons for `INDETERMINATE` are kept apart — a context that
+never scanned is a different fact from a control that scanned and produced no
+evidence. The report is written before the non-zero exit, so a failed context
+never costs you the evidence already gathered.
+
+`go run .` emits the same report as deterministic JSON.
 
 ## What it demonstrates
 
