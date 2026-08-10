@@ -53,9 +53,21 @@ starts.
 | [#2785](https://github.com/kubescape/kubescape/pull/2785) — `t.Setenv` so env vars are restored between runs | +4/−4 | Test isolation: `-count=2` failed because a sibling test leaked an env var. |
 
 All seven merged within four days, each reviewed and reproduced locally by
-@matthyx before merge. Two of them — #2783 and #2898 — are semantic merge
-conflicts: pairs of PRs that were each correct alone and wrong together, found
-by running the suite across the tree rather than by reading an issue.
+@matthyx before merge.
+
+Six of the seven are the same problem seen from different angles: **state that
+outlives the single invocation it was written for.** Discovery cached
+process-wide so a second client inherits the first cluster's resources. A report
+labelled from a process-global instead of from the scan's own context. A library
+owning the process lifecycle by calling `os.Exit`. An environment variable
+surviving between test runs. That is the exact class of bug a sequential fleet
+orchestrator is made of — running a single-cluster path repeatedly without
+letting anything leak between runs — and it is why I went after these
+particular issues rather than whatever was open.
+
+Two of them — #2783 and #2898 — are semantic merge conflicts: pairs of PRs each
+correct alone and wrong together, found by running the suite across the tree
+rather than by reading an issue.
 
 ### Issues filed
 
