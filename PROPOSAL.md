@@ -100,9 +100,33 @@ trace below, which another contributor fixed in #2866.
 [github.com/madhav-sharma0201/kubescape-fleet-spike](https://github.com/madhav-sharma0201/kubescape-fleet-spike)
 — 22 tests, race- and shuffle-clean. Deliberately **not** proposed as a PR: the
 feature is the mentorship, and @matthyx asked candidates not to start the
-project work before selection. It runs against real
-`kubescape scan --format json` output captured from three kind clusters, not
-invented structs.
+project work before selection. It aggregates real
+`kubescape scan --format json` output captured from three kind clusters, plus
+one context that does not exist:
+
+```
+$ go run . -table
+48 controls, 3 scanned, 1 failed, 1 regressions
+
+ERRORS
+  kind-fleet-missing     context "kind-fleet-missing" is not reachable: no kubeconfig entry
+
+DRIFT (vs baseline)
+  CONTROL  CONTEXT       BASELINE  TARGET  KIND
+  C-0057   kind-fleet-b  PASS      FAIL    REGRESSION
+  kind-fleet-b: 2 indeterminate — no usable evidence on one side (skipped or absent)
+  kind-fleet-missing: 48 indeterminate — context did not scan
+$ echo $?
+1
+```
+
+Two things in that output are decisions rather than formatting. Drift prints
+before the matrix, because with 48 controls and one disagreement a report that
+leads with the grid buries the only row anyone needs. And the two reasons for
+`INDETERMINATE` are labelled separately — a context that never scanned is a
+different fact from a control that scanned and produced no evidence. I only
+noticed the first when I ran it: the unreachable context made every control
+indeterminate, and 48 of those lines drowned the one regression.
 
 ---
 
@@ -272,6 +296,18 @@ ID. Two runs over the same evidence produce byte-identical JSON. Tested.
 Concurrency. SaaS/platform aggregation. Changes to the existing single-cluster
 report schema, printers, or public API. Cluster discovery. Remediation. A
 controller or CRDs.
+
+**What sequential costs, stated plainly.** Scan time is the sum of the
+per-cluster times, so a 50-cluster fleet takes 50 scans. That is a real limit
+and I would rather name it than have it discovered in review. I still think it
+is the right trade for this term: the process cannot safely hold two live
+clients today, and #2004 — the singleton this project's own description cites
+— is not something a first feature should have to solve first. The mitigation
+is structural rather than clever: the orchestrator depends only on a
+`ContextScanner`, so once the client layer is safe, running contexts
+concurrently is a change to one implementation of that interface and not to the
+aggregation, the matrix, the drift logic or the report shape. Sequential first
+is what makes concurrent later a small change instead of a rewrite.
 
 ---
 
